@@ -35,6 +35,73 @@ class ShopifyInventoryManager:
             print(f"Error en la petición: {e}")
             return None
     
+    def _process_inventory_batch(self, batch_updates: List[Dict], reason: str) -> bool:
+        """Procesar un lote de actualizaciones de inventario"""
+        mutation = """
+        mutation inventoryAdjustQuantities($input: InventoryAdjustQuantitiesInput!) {
+          inventoryAdjustQuantities(input: $input) {
+            inventoryAdjustmentGroup {
+              reason
+              changes {
+                name
+                delta
+              }
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+        """
+        
+        # Preparar los cambios para la mutación
+        changes = []
+        for update in batch_updates:
+            # Asegurar que tenemos GIDs completos
+            inventory_item_id = update['inventory_item_id']
+            if not inventory_item_id.startswith('gid://'):
+                inventory_item_id = f"gid://shopify/InventoryItem/{inventory_item_id}"
+            
+            location_id = update['location_id']
+            if not location_id.startswith('gid://'):
+                location_id = f"gid://shopify/Location/{location_id}"
+            
+            changes.append({
+                "delta": update['quantity_change'],
+                "inventoryItemId": inventory_item_id,
+                "locationId": location_id
+            })
+        
+        variables = {
+            "input": {
+                "reason": reason,
+                "name": "available",
+                "changes": changes
+            }
+        }
+        
+        result = self._make_request(mutation, variables)
+        
+        if not result or 'data' not in result:
+            print(" Error: No se pudo procesar la petición")
+            return False
+        
+        adjust_result = result['data']['inventoryAdjustQuantities']
+        
+        if adjust_result['userErrors']:
+            print(" Errores al actualizar inventario:")
+            for error in adjust_result['userErrors']:
+                print(f"  - {error['field']}: {error['message']}")
+            return False
+        
+        if adjust_result['inventoryAdjustmentGroup']:
+            changes_made = adjust_result['inventoryAdjustmentGroup']['changes']
+            total_delta = sum(change['delta'] for change in changes_made)
+            print(f"Lote procesado: {len(changes)} items, total delta: {total_delta}")
+        
+        return True
+    
     def get_locations(self) -> List[Dict]:
         """Obtener todas las ubicaciones de la tienda"""
         query = """
@@ -513,3 +580,40 @@ class ShopifyInventoryManager:
             'stock_percentage': round((items_with_stock / total_items) * 100, 2) if total_items > 0 else 0
         }
     
+    def bulk_update_inventory(self, inventory_updates: List[Dict], reason: str = "correction") -> bool:
+        """
+        Actualizar inventario en lote (hasta 250 items por consulta)
+        
+        Args:
+            inventory_updates: Lista de diccionarios con formato:
+                [
+                    {
+                        'inventory_item_id': 'ID_del_item',
+                        'location_id': 'ID_de_ubicacion', 
+                        'quantity_change': 10  # positivo para agregar, negativo para quitar
+                    },
+                    {...}
+                ]
+            reason: Razón del ajuste
+        """
+        
+        batch_size = 250 # Maximo de esta mutation
+        total_updates = len(inventory_updates)
+        successful_batches = 0
+        
+        for i in range(0, total_updates, batch_size):
+            batch = inventory_updates[i:i + batch_size]
+            batch_number = (i // batch_size) + 1
+            total_batches = (total_updates + batch_size - 1) // batch_size
+            
+            print(f"Procesando lote {batch_number}/{total_batches} ({len(batch)} items)...")
+            
+            if self._process_inventory_batch(batch, reason):
+                successful_batches += 1
+            else:
+                print(f" Error en lote {batch_number}")
+        
+        total_batches = (total_updates + batch_size - 1) // batch_size
+        print(f"Completado: {successful_batches}/{total_batches} lotes exitosos")
+        
+        return successful_batches == total_batches

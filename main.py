@@ -22,6 +22,9 @@ def main():
         # print(f"Inventario de {location_Invetory_Summary}:")
         # print(json.dumps(location_Inventory_Detailed, indent=4)) # los acentos se ven raros (no lo cambiare a utf-8)
         start_Time = time.time()
+
+        # Sincrono 
+
         # for item in location_Inventory_Detailed:
         #     added_quantity = random.randint(0, 100)
         #     print(f"""
@@ -31,6 +34,8 @@ def main():
         #         * Sumando: {added_quantity}
         #     """)
         #     manager.set_inventory_quantity(item['inventory_item_id'], use_Location, added_quantity)
+
+        # Asincrono con ThreadPoolExecutor
 
         with ThreadPoolExecutor(max_workers=100) as executor:
             futures = []
