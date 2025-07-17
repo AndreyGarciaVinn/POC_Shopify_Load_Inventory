@@ -287,7 +287,6 @@ class ShopifyInventoryManager:
         
         return self.update_inventory(inventory_item_id, location_id, quantity_change)
     
-
     def get_all_inventory_by_location(self, location_id: str, limit: int = 250) -> List[Dict]:
         """
         Obtener TODO el inventario de una ubicación específica
@@ -513,3 +512,4 @@ class ShopifyInventoryManager:
             'total_incoming': total_incoming,
             'stock_percentage': round((items_with_stock / total_items) * 100, 2) if total_items > 0 else 0
         }
+    
